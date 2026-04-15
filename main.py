@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-from routers import webhook, messages, history, chat, settings
+from routers import webhook, messages, history, chat, settings, auth
 from services.bigquery_service import get_bigquery_service
 
 
@@ -32,6 +32,7 @@ app.include_router(messages.router)
 app.include_router(history.router)
 app.include_router(chat.router)
 app.include_router(settings.router)
+app.include_router(auth.router)
 
 
 @app.get("/")

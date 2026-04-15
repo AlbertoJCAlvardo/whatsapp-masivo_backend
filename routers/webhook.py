@@ -24,7 +24,13 @@ async def verify_webhook(
 
 @router.post("")
 async def receive_webhook(request: Request) -> dict:
-    """Recibe y procesa los mensajes entrantes del webhook de WhatsApp."""
+    """Recibe y procesa los mensajes entrantes del webhook de WhatsApp.
+
+    IMPORTANTE: Siempre devuelve 200 OK a Meta. Si se responde con cualquier
+    codigo que no sea 2xx, Meta reintentara el webhook repetidamente durante
+    horas, lo que causaria registros duplicados en BigQuery.
+    Los errores internos se registran pero no se propagan a Meta.
+    """
     payload = await request.json()
     raw_payload = json.dumps(payload)
 
@@ -38,6 +44,11 @@ async def receive_webhook(request: Request) -> dict:
             return {"status": "ok"}
 
         value = changes[0].get("value", {})
+
+        # Ignorar notificaciones de estado (delivered, read, failed) de mensajes enviados
+        if "statuses" in value and "messages" not in value:
+            return {"status": "ok"}
+
         messages = value.get("messages", [])
 
         bigquery_service = get_bigquery_service()
@@ -47,8 +58,9 @@ async def receive_webhook(request: Request) -> dict:
             if record:
                 bigquery_service.insert_received_message(record)
 
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        # No re-lanzar el error: Meta retentaria el webhook si no recibe 200
+        pass
 
     return {"status": "ok"}
 

@@ -18,14 +18,24 @@ security = HTTPBearer()
 
 
 def verify_token(credentials: HTTPAuthorizationCredentials = Security(security)):
-    """Verifica el token de autenticacion."""
+    """Verifica el token de autenticacion JWT."""
     token = credentials.credentials
-    if token != get_settings().api_auth_token:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid authentication token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    settings = get_settings()
+    
+    import jwt
+    try:
+        # Usamos el token original estático como clave secreta para firmar/validar
+        payload = jwt.decode(token, settings.api_auth_token, algorithms=["HS256"])
+        return payload
+    except jwt.PyJWTError:
+        # Fallback de compatibilidad por si se sigue usando el token duro (ej. dev local)
+        if token != settings.api_auth_token:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid authentication token",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return {"sub": "system"}
 
 
 router = APIRouter(
