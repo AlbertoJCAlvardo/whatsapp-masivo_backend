@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+env/
+venv/
+.venv/
+ENV/
+
+# Secrets
+.env
+*.env
+
+# Tests
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.pytest_cache/
+.hypothesis/
+
+# Type checkers
+.mypy_cache/
+
+# Logs
+pip-log.txt
+pip-delete-this-directory.txt
+*.log
+
+# Editor
+.vscode/
+.idea/
+*.suo
+*.sw?
+.DS_Store
