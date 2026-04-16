@@ -220,7 +220,7 @@ class WhatsAppService:
                     print(f"DEBUG: Meta Error Response: {e.response.text}")
                 return {"status": "ERROR", "detail": str(e)}
 
-    async def create_template(self, name: str, text: str, category: str = "MARKETING", language: str = "es", header_type: str = None, waba_id: str = None) -> dict:
+    async def create_template(self, name: str, text: str, category: str = "UTILITY", language: str = "es", header_type: str = None, waba_id: str = None) -> dict:
         """Registra una nueva plantilla en la cuenta de WhatsApp Business."""
         target_waba = waba_id or self.settings.whatsapp_business_account_id
         if not target_waba:
