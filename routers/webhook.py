@@ -33,6 +33,9 @@ async def receive_webhook(request: Request) -> dict:
     """
     payload = await request.json()
     raw_payload = json.dumps(payload)
+    
+    # Log del payload recibido para depuración
+    print(f"DEBUG: Webhook recibido: {raw_payload}")
 
     try:
         entry = payload.get("entry", [])

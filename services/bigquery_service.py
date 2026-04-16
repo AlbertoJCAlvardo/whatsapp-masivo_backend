@@ -56,6 +56,13 @@ class BigQueryService:
         ]
         self._create_table_if_not_exists("phone_numbers", phone_numbers_schema)
 
+        users_schema = [
+            bigquery.SchemaField("user_id", "STRING", mode="REQUIRED"),
+            bigquery.SchemaField("username", "STRING", mode="REQUIRED"),
+            bigquery.SchemaField("password_hash", "STRING", mode="REQUIRED"),
+        ]
+        self._create_table_if_not_exists("users", users_schema)
+
     def _create_table_if_not_exists(self, table_name: str, schema: list) -> None:
         """Crea una tabla con el esquema especificado si no existe."""
         table_id = f"{self.dataset_id}.{table_name}"

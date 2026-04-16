@@ -116,3 +116,14 @@ async def send_bulk_messages(request: BulkMessageRequest) -> BulkMessageResponse
         failed=failed,
         results=results,
     )
+
+
+@router.get("/templates/{name}/status")
+async def get_template_status(name: str):
+    """Obtiene el estado de una plantilla desde Meta API."""
+    try:
+        whatsapp_service = get_whatsapp_service()
+        status_info = await whatsapp_service.get_template_status(name)
+        return status_info
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

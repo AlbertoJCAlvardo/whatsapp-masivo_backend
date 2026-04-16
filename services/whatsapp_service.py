@@ -173,6 +173,44 @@ class WhatsAppService:
             timestamp=timestamp,
         )
 
+    async def get_template_status(self, template_name: str) -> dict:
+        """Consulta el estado de una plantilla en Meta."""
+        url = f"{self.settings.whatsapp_api_url}/{self.settings.whatsapp_business_account_id}/message_templates"
+        
+        params = {"name": template_name}
+        
+        async with httpx.AsyncClient() as client:
+            try:
+                # El header de Authorization ya esta en self.headers
+                response = await client.get(
+                    url,
+                    headers=self.headers,
+                    params=params,
+                    timeout=10.0,
+                )
+                response.raise_for_status()
+                data = response.json()
+                
+                # Meta devuelve una lista en 'data'
+                templates = data.get("data", [])
+                if not templates:
+                    return {"status": "NOT_FOUND"}
+                
+                # Buscamos la que coincida exactamente por nombre
+                target = next((t for t in templates if t.get("name") == template_name), None)
+                if not target:
+                    return {"status": "NOT_FOUND"}
+                
+                return {
+                    "status": target.get("status"),
+                    "name": target.get("name"),
+                    "id": target.get("id"),
+                    "category": target.get("category")
+                }
+            except Exception as e:
+                print(f"DEBUG: Error al consultar status de plantilla '{template_name}': {str(e)}")
+                return {"status": "ERROR", "detail": str(e)}
+
     def _extract_content(self, request: SendMessageRequest) -> str:
         """Extrae el contenido del mensaje segun su tipo."""
         if request.message_type.value == "text" and request.text:
