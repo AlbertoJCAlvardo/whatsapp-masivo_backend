@@ -8,7 +8,8 @@ from services.bigquery_service import get_bigquery_service
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Inicializa los servicios al arrancar la aplicacion."""
-    get_bigquery_service()
+    # get_bigquery_service() inicializaria BigQuery sincrónicamente, bloqueando el inicio.
+    # Ahora se inicializará perezosamente en la primera solicitud.
     yield
 
 
