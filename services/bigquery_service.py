@@ -182,6 +182,20 @@ class BigQueryService:
         results = query_job.result()
         return [dict(row) for row in results]
 
+    def add_user(self, user_id: str, username: str, password_hash: str) -> None:
+        """Agrega un nuevo usuario a BigQuery."""
+        table_id = f"{self.dataset_id}.users"
+        rows_to_insert = [
+            {
+                "user_id": user_id,
+                "username": username,
+                "password_hash": password_hash,
+            }
+        ]
+        errors = self.client.insert_rows_json(table_id, rows_to_insert)
+        if errors:
+            raise Exception(f"Error inserting user: {errors}")
+
 
 _bigquery_service: BigQueryService | None = None
 

@@ -11,9 +11,30 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+import uuid
+
 class LoginRequest(BaseModel):
     username: str
     password: str
+
+class UserCreate(BaseModel):
+    username: str
+    password: str
+
+@router.post("/register")
+async def register(request: UserCreate):
+    """Registra un nuevo usuario en BigQuery con contraseña cifrada."""
+    bq = get_bigquery_service()
+    
+    # Hash de la contraseña inmediatamente
+    hashed_pwd = pwd_context.hash(request.password)
+    user_id = str(uuid.uuid4())
+    
+    try:
+        bq.add_user(user_id, request.username, hashed_pwd)
+        return {"message": "Usuario registrado exitosamente", "username": request.username}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 class LoginResponse(BaseModel):
     access_token: str
