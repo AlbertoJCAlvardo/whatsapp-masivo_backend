@@ -53,8 +53,21 @@ class BigQueryService:
             bigquery.SchemaField("alias", "STRING", mode="REQUIRED"),
             bigquery.SchemaField("phone_number_id", "STRING", mode="REQUIRED"),
             bigquery.SchemaField("display_phone_number", "STRING", mode="NULLABLE"),
+            bigquery.SchemaField("waba_id", "STRING", mode="NULLABLE"),
         ]
         self._create_table_if_not_exists("phone_numbers", phone_numbers_schema)
+        
+        # Migración: Verificar si la columna waba_id existe
+        table_id = f"{self.dataset_id}.phone_numbers"
+        try:
+            table = self.client.get_table(table_id)
+            if not any(f.name == "waba_id" for f in table.schema):
+                new_schema = table.schema[:]
+                new_schema.append(bigquery.SchemaField("waba_id", "STRING", mode="NULLABLE"))
+                table.schema = new_schema
+                self.client.update_table(table, ["schema"])
+        except Exception as e:
+            print(f"Error checking/updating phone_numbers schema: {e}")
 
         users_schema = [
             bigquery.SchemaField("user_id", "STRING", mode="REQUIRED"),
@@ -75,14 +88,14 @@ class BigQueryService:
     def get_phone_numbers(self) -> list[dict]:
         """Obtiene la lista de numeros de telefono configurados."""
         query = f"""
-            SELECT alias, phone_number_id, display_phone_number
+            SELECT alias, phone_number_id, display_phone_number, waba_id
             FROM `{self.dataset_id}.phone_numbers`
         """
         query_job = self.client.query(query)
         results = query_job.result()
         return [dict(row) for row in results]
 
-    def add_phone_number(self, alias: str, phone_number_id: str, display_phone_number: str = None) -> None:
+    def add_phone_number(self, alias: str, phone_number_id: str, display_phone_number: str = None, waba_id: str = None) -> None:
         """Agrega un nuevo numero de telefono a la configuracion."""
         table_id = f"{self.dataset_id}.phone_numbers"
         rows_to_insert = [
@@ -90,6 +103,7 @@ class BigQueryService:
                 "alias": alias,
                 "phone_number_id": phone_number_id,
                 "display_phone_number": display_phone_number,
+                "waba_id": waba_id,
             }
         ]
         errors = self.client.insert_rows_json(table_id, rows_to_insert)

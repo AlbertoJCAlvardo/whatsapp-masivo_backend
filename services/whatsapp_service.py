@@ -173,12 +173,13 @@ class WhatsAppService:
             timestamp=timestamp,
         )
 
-    async def get_template_status(self, template_name: str) -> dict:
+    async def get_template_status(self, template_name: str, waba_id: str = None) -> dict:
         """Consulta el estado de una plantilla en Meta."""
-        if not self.settings.whatsapp_business_account_id:
-            return {"status": "ERROR", "detail": "Falta configurar WHATSAPP_BUSINESS_ACCOUNT_ID"}
+        target_waba = waba_id or self.settings.whatsapp_business_account_id
+        if not target_waba:
+            return {"status": "ERROR", "detail": "WABA ID no configurado"}
 
-        url = f"{self.settings.whatsapp_api_url}/{self.settings.whatsapp_business_account_id}/message_templates"
+        url = f"{self.settings.whatsapp_api_url}/{target_waba}/message_templates"
         
         params = {"name": template_name}
         
@@ -214,12 +215,13 @@ class WhatsAppService:
                 print(f"DEBUG: Error al consultar status de plantilla '{template_name}': {str(e)}")
                 return {"status": "ERROR", "detail": str(e)}
 
-    async def create_template(self, name: str, text: str, category: str = "MARKETING", language: str = "es", header_type: str = None) -> dict:
+    async def create_template(self, name: str, text: str, category: str = "MARKETING", language: str = "es", header_type: str = None, waba_id: str = None) -> dict:
         """Registra una nueva plantilla en la cuenta de WhatsApp Business."""
-        if not self.settings.whatsapp_business_account_id:
+        target_waba = waba_id or self.settings.whatsapp_business_account_id
+        if not target_waba:
             raise Exception("WABA ID no configurado")
             
-        url = f"{self.settings.whatsapp_api_url}/{self.settings.whatsapp_business_account_id}/message_templates"
+        url = f"{self.settings.whatsapp_api_url}/{target_waba}/message_templates"
         
         components = [
             {

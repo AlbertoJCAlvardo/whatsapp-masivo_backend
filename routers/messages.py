@@ -20,6 +20,7 @@ class TemplateCreate(BaseModel):
     category: str = "MARKETING"
     language: str = "es"
     header_type: Optional[str] = None
+    waba_id: Optional[str] = None
 
 
 security = HTTPBearer()
@@ -61,7 +62,8 @@ async def create_template(request: TemplateCreate):
             text=request.text,
             category=request.category,
             language=request.language,
-            header_type=request.header_type
+            header_type=request.header_type,
+            waba_id=request.waba_id
         )
         return result
     except Exception as e:
@@ -144,11 +146,11 @@ async def send_bulk_messages(request: BulkMessageRequest) -> BulkMessageResponse
 
 
 @router.get("/templates/{name}/status")
-async def get_template_status(name: str):
+async def get_template_status(name: str, waba_id: Optional[str] = None):
     """Obtiene el estado de una plantilla desde Meta API."""
     try:
         whatsapp_service = get_whatsapp_service()
-        status_info = await whatsapp_service.get_template_status(name)
+        status_info = await whatsapp_service.get_template_status(name, waba_id)
         return status_info
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

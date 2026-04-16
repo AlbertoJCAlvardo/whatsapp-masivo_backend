@@ -11,6 +11,7 @@ class PhoneNumber(BaseModel):
     alias: str
     phone_number_id: str
     display_phone_number: Optional[str] = None
+    waba_id: Optional[str] = None
 
 @router.get("/phone-numbers")
 async def get_phone_numbers():
@@ -26,7 +27,12 @@ async def add_phone_number(phone: PhoneNumber):
     """Agrega un nuevo numero de telefono."""
     try:
         bq_service = get_bigquery_service()
-        bq_service.add_phone_number(phone.alias, phone.phone_number_id, phone.display_phone_number)
+        bq_service.add_phone_number(
+            phone.alias, 
+            phone.phone_number_id, 
+            phone.display_phone_number,
+            phone.waba_id
+        )
         return {"status": "ok"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
