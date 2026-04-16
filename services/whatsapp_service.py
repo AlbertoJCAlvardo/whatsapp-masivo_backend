@@ -185,13 +185,16 @@ class WhatsAppService:
         
         async with httpx.AsyncClient() as client:
             try:
-                # El header de Authorization ya esta en self.headers
+                print(f"DEBUG: Consultando status de plantilla Meta...")
+                print(f"DEBUG: URL: {url}")
+                
                 response = await client.get(
                     url,
                     headers=self.headers,
                     params=params,
                     timeout=10.0,
                 )
+                print(f"DEBUG: Meta Status Response: {response.text}")
                 response.raise_for_status()
                 data = response.json()
                 
@@ -248,6 +251,12 @@ class WhatsAppService:
         
         async with httpx.AsyncClient() as client:
             try:
+                # Depuracion profunda
+                debug_payload = payload.copy()
+                print(f"DEBUG: Intentando registrar plantilla Meta...")
+                print(f"DEBUG: URL: {url}")
+                print(f"DEBUG: Payload: {json.dumps(debug_payload)}")
+                
                 response = await client.post(
                     url,
                     headers=self.headers,
@@ -258,6 +267,12 @@ class WhatsAppService:
                 print(f"DEBUG: Meta Template Create Response: {response.text}")
                 response.raise_for_status()
                 return response.json()
+            except httpx.TimeoutException:
+                print(f"DEBUG: ERROR - Tiempo de espera agotado (Timeout) al conectar con Meta.")
+                raise Exception("Meta: Tiempo de espera agotado. Reintenta en unos momentos.")
+            except httpx.NetworkError as ne:
+                print(f"DEBUG: ERROR - Error de red al conectar con Meta: {str(ne)}")
+                raise Exception(f"Meta: Error de conexion de red: {str(ne)}")
             except Exception as e:
                 print(f"DEBUG: Error al crear plantilla Meta: {str(e)}")
                 if hasattr(e, 'response') and e.response:
