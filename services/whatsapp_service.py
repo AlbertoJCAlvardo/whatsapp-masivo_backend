@@ -263,7 +263,9 @@ class WhatsAppService:
                 if hasattr(e, 'response') and e.response:
                     error_data = e.response.json()
                     print(f"DEBUG: Meta API Error Detail: {error_data}")
-                    raise Exception(f"Meta API Error: {error_data.get('error', {}).get('message', str(e))}")
+                    meta_error = error_data.get('error', {})
+                    msg = meta_error.get('error_user_msg') or meta_error.get('message') or str(e)
+                    raise Exception(f"Meta: {msg}")
                 raise e
 
     def _extract_content(self, request: SendMessageRequest) -> str:
