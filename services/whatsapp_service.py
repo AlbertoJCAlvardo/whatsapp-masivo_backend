@@ -175,6 +175,9 @@ class WhatsAppService:
 
     async def get_template_status(self, template_name: str) -> dict:
         """Consulta el estado de una plantilla en Meta."""
+        if not self.settings.whatsapp_business_account_id:
+            return {"status": "ERROR", "detail": "Falta configurar WHATSAPP_BUSINESS_ACCOUNT_ID"}
+
         url = f"{self.settings.whatsapp_api_url}/{self.settings.whatsapp_business_account_id}/message_templates"
         
         params = {"name": template_name}
