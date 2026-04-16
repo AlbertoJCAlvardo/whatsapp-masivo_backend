@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from passlib.context import CryptContext
 import jwt
 from datetime import datetime, timedelta
+from google.cloud import bigquery
 from config import get_settings
 from services.bigquery_service import get_bigquery_service
 
@@ -40,9 +41,9 @@ async def login(request: LoginRequest):
         WHERE username = @username
         LIMIT 1
     """
-    job_config = bq.client.query.QueryJobConfig(
+    job_config = bigquery.QueryJobConfig(
         query_parameters=[
-            bq.client.query.ScalarQueryParameter("username", "STRING", request.username)
+            bigquery.ScalarQueryParameter("username", "STRING", request.username)
         ]
     )
     
