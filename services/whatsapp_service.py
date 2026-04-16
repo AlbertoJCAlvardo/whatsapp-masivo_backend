@@ -214,24 +214,32 @@ class WhatsAppService:
                 print(f"DEBUG: Error al consultar status de plantilla '{template_name}': {str(e)}")
                 return {"status": "ERROR", "detail": str(e)}
 
-    async def create_template(self, name: str, text: str, category: str = "MARKETING", language: str = "es") -> dict:
+    async def create_template(self, name: str, text: str, category: str = "MARKETING", language: str = "es", header_type: str = None) -> dict:
         """Registra una nueva plantilla en la cuenta de WhatsApp Business."""
         if not self.settings.whatsapp_business_account_id:
             raise Exception("WABA ID no configurado")
             
         url = f"{self.settings.whatsapp_api_url}/{self.settings.whatsapp_business_account_id}/message_templates"
         
+        components = [
+            {
+                "type": "BODY",
+                "text": text
+            }
+        ]
+        
+        if header_type and header_type.upper() in ["IMAGE", "VIDEO", "DOCUMENT"]:
+            components.insert(0, {
+                "type": "HEADER",
+                "format": header_type.upper()
+            })
+            
         payload = {
             "name": name,
             "category": category,
             "allow_category_change": True,
             "language": language,
-            "components": [
-                {
-                    "type": "BODY",
-                    "text": text
-                }
-            ]
+            "components": components
         }
         
         async with httpx.AsyncClient() as client:

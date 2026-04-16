@@ -19,6 +19,7 @@ class TemplateCreate(BaseModel):
     text: str
     category: str = "MARKETING"
     language: str = "es"
+    header_type: Optional[str] = None
 
 
 security = HTTPBearer()
@@ -59,7 +60,8 @@ async def create_template(request: TemplateCreate):
             name=request.name,
             text=request.text,
             category=request.category,
-            language=request.language
+            language=request.language,
+            header_type=request.header_type
         )
         return result
     except Exception as e:
