@@ -214,6 +214,44 @@ class WhatsAppService:
                 print(f"DEBUG: Error al consultar status de plantilla '{template_name}': {str(e)}")
                 return {"status": "ERROR", "detail": str(e)}
 
+    async def create_template(self, name: str, text: str, category: str = "MARKETING", language: str = "es") -> dict:
+        """Registra una nueva plantilla en la cuenta de WhatsApp Business."""
+        if not self.settings.whatsapp_business_account_id:
+            raise Exception("WABA ID no configurado")
+            
+        url = f"{self.settings.whatsapp_api_url}/{self.settings.whatsapp_business_account_id}/message_templates"
+        
+        payload = {
+            "name": name,
+            "category": category,
+            "allow_category_change": True,
+            "language": language,
+            "components": [
+                {
+                    "type": "BODY",
+                    "text": text
+                }
+            ]
+        }
+        
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.post(
+                    url,
+                    headers=self.headers,
+                    json=payload,
+                    timeout=15.0
+                )
+                # Log de respuesta para depuracion
+                print(f"DEBUG: Meta Template Create Response: {response.text}")
+                response.raise_for_status()
+                return response.json()
+            except Exception as e:
+                print(f"DEBUG: Error al crear plantilla Meta: {str(e)}")
+                if hasattr(e, 'response') and e.response:
+                    return {"error": str(e), "detail": e.response.json()}
+                raise e
+
     def _extract_content(self, request: SendMessageRequest) -> str:
         """Extrae el contenido del mensaje segun su tipo."""
         if request.message_type.value == "text" and request.text:

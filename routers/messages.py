@@ -14,6 +14,13 @@ from pydantic import BaseModel
 from typing import Optional
 
 
+class TemplateCreate(BaseModel):
+    name: str
+    text: str
+    category: str = "MARKETING"
+    language: str = "es"
+
+
 security = HTTPBearer()
 
 
@@ -41,6 +48,22 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Security(security))
 router = APIRouter(
     prefix="/messages", tags=["messages"], dependencies=[Depends(verify_token)]
 )
+
+
+@router.post("/templates")
+async def create_template(request: TemplateCreate):
+    """Crea una nueva plantilla en Meta API."""
+    try:
+        whatsapp_service = get_whatsapp_service()
+        result = await whatsapp_service.create_template(
+            name=request.name,
+            text=request.text,
+            category=request.category,
+            language=request.language
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 class BulkMessageRequest(BaseModel):
