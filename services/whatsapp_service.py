@@ -213,6 +213,8 @@ class WhatsAppService:
                 }
             except Exception as e:
                 print(f"DEBUG: Error al consultar status de plantilla '{template_name}': {str(e)}")
+                if hasattr(e, 'response') and e.response:
+                    print(f"DEBUG: Meta Error Response: {e.response.text}")
                 return {"status": "ERROR", "detail": str(e)}
 
     async def create_template(self, name: str, text: str, category: str = "MARKETING", language: str = "es", header_type: str = None, waba_id: str = None) -> dict:
@@ -259,7 +261,9 @@ class WhatsAppService:
             except Exception as e:
                 print(f"DEBUG: Error al crear plantilla Meta: {str(e)}")
                 if hasattr(e, 'response') and e.response:
-                    return {"error": str(e), "detail": e.response.json()}
+                    error_data = e.response.json()
+                    print(f"DEBUG: Meta API Error Detail: {error_data}")
+                    raise Exception(f"Meta API Error: {error_data.get('error', {}).get('message', str(e))}")
                 raise e
 
     def _extract_content(self, request: SendMessageRequest) -> str:
