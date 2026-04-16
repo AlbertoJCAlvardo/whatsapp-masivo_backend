@@ -127,15 +127,28 @@ class WhatsAppService:
 
         url = f"{self._get_base_url(request.from_phone_number_id)}/messages"
 
+        print(f"DEBUG: Enviando mensaje a WhatsApp API")
+        print(f"DEBUG: URL: {url}")
+        print(f"DEBUG: Payload: {json.dumps(payload, indent=2)}")
+
         async with httpx.AsyncClient() as client:
-            response = await client.post(
-                url,
-                headers=self.headers,
-                json=payload,
-                timeout=30.0,
-            )
-            response.raise_for_status()
-            data = response.json()
+            try:
+                response = await client.post(
+                    url,
+                    headers=self.headers,
+                    json=payload,
+                    timeout=30.0,
+                )
+                print(f"DEBUG: Respuesta Status: {response.status_code}")
+                print(f"DEBUG: Respuesta Body: {response.text}")
+                response.raise_for_status()
+                data = response.json()
+            except httpx.HTTPStatusError as e:
+                print(f"DEBUG: Error de HTTP: {e.response.text}")
+                raise e
+            except Exception as e:
+                print(f"DEBUG: Error inesperado al enviar: {str(e)}")
+                raise e
 
         message_id = data["messages"][0]["id"]
         timestamp = datetime.utcnow()
