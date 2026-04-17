@@ -147,15 +147,20 @@ class BigQueryService:
             raise Exception(f"Error inserting received message: {errors}")
 
     def get_contacts(self) -> list[str]:
-        """Obtiene una lista de numeros de telefono que han enviado mensajes."""
+        """Obtiene una lista de numeros de telefono (contactos) con los que ha habido interaccion."""
         query = f"""
-            SELECT DISTINCT from_number
-            FROM `{self.dataset_id}.{self.settings.bigquery_table_received}`
-            ORDER BY from_number
+            SELECT DISTINCT phone
+            FROM (
+                SELECT from_number as phone FROM `{self.dataset_id}.{self.settings.bigquery_table_received}`
+                UNION DISTINCT
+                SELECT to_number as phone FROM `{self.dataset_id}.{self.settings.bigquery_table_sent}`
+            )
+            WHERE phone IS NOT NULL
+            ORDER BY phone
         """
         query_job = self.client.query(query)
         results = query_job.result()
-        return [row.from_number for row in results]
+        return [row.phone for row in results]
 
     def get_chat_history(self, phone_number: str) -> list[dict]:
         """Obtiene el historial de chat (enviados y recibidos) para un numero."""

@@ -5,6 +5,7 @@ import json
 from config import get_settings
 from models import ReceivedMessageRecord, MessageType
 from services.bigquery_service import get_bigquery_service
+import traceback
 
 router = APIRouter(prefix="/webhook", tags=["webhook"])
 
@@ -61,8 +62,10 @@ async def receive_webhook(request: Request) -> dict:
             if record:
                 bigquery_service.insert_received_message(record)
 
-    except Exception:
+    except Exception as e:
         # No re-lanzar el error: Meta retentaria el webhook si no recibe 200
+        print(f"DEBUG: Error procesando webhook: {str(e)}")
+        traceback.print_exc()
         pass
 
     return {"status": "ok"}

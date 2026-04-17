@@ -288,7 +288,7 @@ class WhatsAppService:
         if request.message_type.value == "text" and request.text:
             return request.text.body
         elif request.message_type.value == "template":
-            return f"template:{request.template_name}"
+            return request.full_text if request.full_text else f"template:{request.template_name}"
         elif request.message_type.value in [
             "image",
             "video",

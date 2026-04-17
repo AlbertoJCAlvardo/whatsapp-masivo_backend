@@ -113,6 +113,7 @@ class SendMessageRequest(BaseModel):
     template_name: Optional[str] = None
     template_language: Optional[str] = "es"
     template_components: Optional[list] = None
+    full_text: Optional[str] = None
 
 
 class SendMessageResponse(BaseModel):
