@@ -17,7 +17,7 @@ from typing import Optional
 class TemplateCreate(BaseModel):
     name: str
     text: str
-    category: str = "UTILITY"
+    category: str = "MARKETING"
     language: str = "es"
     header_type: Optional[str] = None
     waba_id: Optional[str] = None
