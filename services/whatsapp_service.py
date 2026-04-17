@@ -261,7 +261,7 @@ class WhatsAppService:
                     url,
                     headers=self.headers,
                     json=payload,
-                    timeout=15.0
+                    timeout=30.0
                 )
                 # Log de respuesta para depuracion
                 print(f"DEBUG: Meta Template Create Response: {response.text}")
