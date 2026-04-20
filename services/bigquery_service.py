@@ -157,13 +157,14 @@ class BigQueryService:
     def get_contacts(self) -> list[str]:
         """Obtiene una lista de numeros de telefono (contactos) con los que ha habido interaccion."""
         query = f"""
-            SELECT DISTINCT phone
+            SELECT MAX(phone) as phone
             FROM (
                 SELECT from_number as phone FROM `{self.dataset_id}.{self.settings.bigquery_table_received}`
                 UNION DISTINCT
                 SELECT to_number as phone FROM `{self.dataset_id}.{self.settings.bigquery_table_sent}`
             )
-            WHERE phone IS NOT NULL
+            WHERE phone IS NOT NULL AND LENGTH(phone) >= 10
+            GROUP BY RIGHT(phone, 10)
             ORDER BY phone
         """
         query_job = self.client.query(query)
@@ -175,11 +176,11 @@ class BigQueryService:
         query = f"""
             SELECT message_id, content, sent_at as timestamp, 'sent' as type, message_type
             FROM `{self.dataset_id}.{self.settings.bigquery_table_sent}`
-            WHERE to_number = @phone_number
+            WHERE RIGHT(to_number, 10) = RIGHT(@phone_number, 10)
             UNION ALL
             SELECT message_id, content, received_at as timestamp, 'received' as type, message_type
             FROM `{self.dataset_id}.{self.settings.bigquery_table_received}`
-            WHERE from_number = @phone_number
+            WHERE RIGHT(from_number, 10) = RIGHT(@phone_number, 10)
             ORDER BY timestamp ASC
             LIMIT 100
         """

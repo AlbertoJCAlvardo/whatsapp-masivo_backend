@@ -143,6 +143,8 @@ class WhatsAppService:
                     json=payload,
                     timeout=30.0,
                 )
+                response.raise_for_status()
+                data = response.json()
             except httpx.HTTPStatusError as e:
                 logger.error(f"Error de HTTP al enviar mensaje: {e.response.status_code} - {e.response.text}")
                 raise e
