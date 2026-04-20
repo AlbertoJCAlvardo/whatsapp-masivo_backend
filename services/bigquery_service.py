@@ -1,7 +1,11 @@
+import logging
 from google.cloud import bigquery
 from google.cloud.exceptions import NotFound
 from models import SentMessageRecord, ReceivedMessageRecord
 from config import get_settings
+
+logger = logging.getLogger(__name__)
+
 
 
 class BigQueryService:
@@ -67,7 +71,7 @@ class BigQueryService:
                 table.schema = new_schema
                 self.client.update_table(table, ["schema"])
         except Exception as e:
-            print(f"Error checking/updating phone_numbers schema: {e}")
+            logger.error(f"Error checking/updating phone_numbers schema: {e}")
 
         users_schema = [
             bigquery.SchemaField("user_id", "STRING", mode="REQUIRED"),
@@ -126,7 +130,9 @@ class BigQueryService:
         ]
         errors = self.client.insert_rows_json(table_id, rows_to_insert)
         if errors:
+            logger.error(f"Error al insertar mensaje enviado en BigQuery: {errors}")
             raise Exception(f"Error inserting sent message: {errors}")
+        logger.info(f"Mensaje enviado insertado en BigQuery: {record.message_id}")
 
     def insert_received_message(self, record: ReceivedMessageRecord) -> None:
         """Inserta un registro de mensaje recibido en BigQuery."""
@@ -144,7 +150,9 @@ class BigQueryService:
         ]
         errors = self.client.insert_rows_json(table_id, rows_to_insert)
         if errors:
+            logger.error(f"Error al insertar mensaje recibido en BigQuery: {errors}")
             raise Exception(f"Error inserting received message: {errors}")
+        logger.info(f"Mensaje recibido insertado en BigQuery: {record.message_id}")
 
     def get_contacts(self) -> list[str]:
         """Obtiene una lista de numeros de telefono (contactos) con los que ha habido interaccion."""

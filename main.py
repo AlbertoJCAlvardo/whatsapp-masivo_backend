@@ -1,8 +1,19 @@
+import logging
+import sys
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from routers import webhook, messages, history, chat, settings, auth
 from services.bigquery_service import get_bigquery_service
+
+# Configuración de logging para Cloud Run / Cloud Logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)s: %(message)s",
+    stream=sys.stdout,
+)
+logger = logging.getLogger(__name__)
+
 
 
 @asynccontextmanager

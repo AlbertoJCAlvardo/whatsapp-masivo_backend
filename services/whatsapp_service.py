@@ -1,10 +1,14 @@
-import httpx
+import json
+import logging
 from datetime import datetime
 from typing import Any
+import httpx
 from models import SendMessageRequest, SendMessageResponse, SentMessageRecord
 from config import get_settings
 from services.bigquery_service import get_bigquery_service
-import json
+
+logger = logging.getLogger(__name__)
+
 
 
 class WhatsAppService:
@@ -127,9 +131,9 @@ class WhatsAppService:
 
         url = f"{self._get_base_url(request.from_phone_number_id)}/messages"
 
-        print(f"DEBUG: Enviando mensaje a WhatsApp API")
-        print(f"DEBUG: URL: {url}")
-        print(f"DEBUG: Payload: {json.dumps(payload, indent=2)}")
+        logger.info(f"Enviando mensaje a WhatsApp API: to={request.to}, type={request.message_type}")
+        logger.debug(f"URL: {url}")
+        logger.debug(f"Payload: {json.dumps(payload)}")
 
         async with httpx.AsyncClient() as client:
             try:
@@ -139,15 +143,11 @@ class WhatsAppService:
                     json=payload,
                     timeout=30.0,
                 )
-                print(f"DEBUG: Respuesta Status: {response.status_code}")
-                print(f"DEBUG: Respuesta Body: {response.text}")
-                response.raise_for_status()
-                data = response.json()
             except httpx.HTTPStatusError as e:
-                print(f"DEBUG: Error de HTTP: {e.response.text}")
+                logger.error(f"Error de HTTP al enviar mensaje: {e.response.status_code} - {e.response.text}")
                 raise e
             except Exception as e:
-                print(f"DEBUG: Error inesperado al enviar: {str(e)}")
+                logger.error(f"Error inesperado al enviar mensaje: {str(e)}")
                 raise e
 
         message_id = data["messages"][0]["id"]
@@ -215,9 +215,9 @@ class WhatsAppService:
                     "category": target.get("category")
                 }
             except Exception as e:
-                print(f"DEBUG: Error al consultar status de plantilla '{template_name}': {str(e)}")
+                logger.error(f"Error al consultar status de plantilla '{template_name}': {str(e)}")
                 if hasattr(e, 'response') and e.response:
-                    print(f"DEBUG: Meta Error Response: {e.response.text}")
+                    logger.error(f"Meta Error Response: {e.response.text}")
                 return {"status": "ERROR", "detail": str(e)}
 
     async def create_template(self, name: str, text: str, category: str = "MARKETING", language: str = "es", header_type: str = None, waba_id: str = None) -> dict:
@@ -268,16 +268,16 @@ class WhatsAppService:
                 response.raise_for_status()
                 return response.json()
             except httpx.TimeoutException:
-                print(f"DEBUG: ERROR - Tiempo de espera agotado (Timeout) al conectar con Meta.")
+                logger.error("Tiempo de espera agotado (Timeout) al conectar con Meta.")
                 raise Exception("Meta: Tiempo de espera agotado. Reintenta en unos momentos.")
             except httpx.NetworkError as ne:
-                print(f"DEBUG: ERROR - Error de red al conectar con Meta: {str(ne)}")
+                logger.error(f"Error de red al conectar con Meta: {str(ne)}")
                 raise Exception(f"Meta: Error de conexion de red: {str(ne)}")
             except Exception as e:
-                print(f"DEBUG: Error al crear plantilla Meta: {str(e)}")
+                logger.error(f"Error al crear plantilla Meta: {str(e)}")
                 if hasattr(e, 'response') and e.response:
                     error_data = e.response.json()
-                    print(f"DEBUG: Meta API Error Detail: {error_data}")
+                    logger.error(f"Meta API Error Detail: {error_data}")
                     meta_error = error_data.get('error', {})
                     msg = meta_error.get('error_user_msg') or meta_error.get('message') or str(e)
                     raise Exception(f"Meta: {msg}")

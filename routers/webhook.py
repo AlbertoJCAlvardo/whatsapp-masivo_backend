@@ -1,11 +1,15 @@
+import json
+import logging
+import traceback
+from datetime import datetime
 from fastapi import APIRouter, Query, Request, HTTPException
 from fastapi.responses import PlainTextResponse
-from datetime import datetime
-import json
 from config import get_settings
 from models import ReceivedMessageRecord, MessageType
 from services.bigquery_service import get_bigquery_service
-import traceback
+
+logger = logging.getLogger(__name__)
+
 
 router = APIRouter(prefix="/webhook", tags=["webhook"])
 
@@ -36,24 +40,30 @@ async def receive_webhook(request: Request) -> dict:
     raw_payload = json.dumps(payload)
     
     # Log del payload recibido para depuración
-    print(f"DEBUG: Webhook recibido: {raw_payload}")
+    logger.info(f"Webhook recibido: {raw_payload}")
 
     try:
         entry = payload.get("entry", [])
         if not entry:
+            logger.warning("Payload del webhook sin campo 'entry'")
             return {"status": "ok"}
 
         changes = entry[0].get("changes", [])
         if not changes:
+            logger.warning("Entry del webhook sin campo 'changes'")
             return {"status": "ok"}
 
         value = changes[0].get("value", {})
 
         # Ignorar notificaciones de estado (delivered, read, failed) de mensajes enviados
         if "statuses" in value and "messages" not in value:
+            logger.info("Notificacion de estado (status) recibida e ignorada")
             return {"status": "ok"}
 
         messages = value.get("messages", [])
+        if not messages:
+            logger.info("El webhook no contiene mensajes (probablemente es una notificacion de otro tipo)")
+            return {"status": "ok"}
 
         bigquery_service = get_bigquery_service()
 
@@ -64,8 +74,8 @@ async def receive_webhook(request: Request) -> dict:
 
     except Exception as e:
         # No re-lanzar el error: Meta retentaria el webhook si no recibe 200
-        print(f"DEBUG: Error procesando webhook: {str(e)}")
-        traceback.print_exc()
+        logger.error(f"Error procesando webhook: {str(e)}")
+        logger.error(traceback.format_exc())
         pass
 
     return {"status": "ok"}
@@ -79,6 +89,7 @@ def _parse_message(message: dict, raw_payload: str) -> ReceivedMessageRecord | N
     message_type = message.get("type", "text")
 
     if not all([message_id, from_number, timestamp_str]):
+        logger.warning(f"Mensaje omitido por falta de datos requeridos: id={message_id}, from={from_number}, timestamp={timestamp_str}")
         return None
 
     timestamp = datetime.fromtimestamp(int(timestamp_str))
