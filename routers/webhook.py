@@ -55,10 +55,25 @@ async def receive_webhook(request: Request) -> dict:
 
         value = changes[0].get("value", {})
 
-        # Ignorar notificaciones de estado (delivered, read, failed) de mensajes enviados
-        if "statuses" in value and "messages" not in value:
-            logger.info("Notificacion de estado (status) recibida e ignorada")
-            return {"status": "ok"}
+        if "statuses" in value:
+            statuses = value.get("statuses", [])
+            bigquery_service = get_bigquery_service()
+            for status_obj in statuses:
+                msg_id = status_obj.get("id")
+                msg_status = status_obj.get("status")
+                if msg_id and msg_status:
+                    error_details = None
+                    if msg_status == "failed" and "errors" in status_obj:
+                        error_details = json.dumps(status_obj.get("errors"))
+                    
+                    try:
+                        bigquery_service.update_message_status(msg_id, msg_status, error_details)
+                    except Exception as e:
+                        logger.error(f"Error actualizando status desde webhook para {msg_id}: {e}")
+                        
+            if "messages" not in value:
+                logger.info("Notificacion de estado (status) procesada")
+                return {"status": "ok"}
 
         messages = value.get("messages", [])
         if not messages:

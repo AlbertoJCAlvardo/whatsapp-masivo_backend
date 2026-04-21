@@ -154,6 +154,35 @@ class BigQueryService:
             raise Exception(f"Error inserting received message: {errors}")
         logger.info(f"Mensaje recibido insertado en BigQuery: {record.message_id}")
 
+    def update_message_status(self, message_id: str, new_status: str, error_details: str = None) -> None:
+        """Actualiza el estado de un mensaje enviado utilizando DML UPDATE."""
+        table_id = f"{self.dataset_id}.{self.settings.bigquery_table_sent}"
+        
+        query = f"""
+            UPDATE `{table_id}`
+            SET status = @new_status
+        """
+        
+        query_parameters = [
+            bigquery.ScalarQueryParameter("new_status", "STRING", new_status),
+            bigquery.ScalarQueryParameter("message_id", "STRING", message_id)
+        ]
+
+        if error_details:
+            query += ", whatsapp_response = @error_details"
+            query_parameters.append(bigquery.ScalarQueryParameter("error_details", "STRING", error_details))
+
+        query += " WHERE message_id = @message_id"
+
+        job_config = bigquery.QueryJobConfig(query_parameters=query_parameters)
+        
+        try:
+            query_job = self.client.query(query, job_config=job_config)
+            query_job.result()  # Esperar a que termine la transaccion
+            logger.info(f"Estado del mensaje {message_id} actualizado a {new_status} en BigQuery")
+        except Exception as e:
+            logger.error(f"Error actualizando estado en BigQuery para {message_id}: {str(e)}")
+
     def get_contacts(self) -> list[str]:
         """Obtiene una lista de numeros de telefono (contactos) con los que ha habido interaccion."""
         query = f"""
@@ -177,6 +206,7 @@ class BigQueryService:
             SELECT message_id, content, sent_at as timestamp, 'sent' as type, message_type
             FROM `{self.dataset_id}.{self.settings.bigquery_table_sent}`
             WHERE RIGHT(to_number, 10) = RIGHT(@phone_number, 10)
+            AND status != 'failed'
             UNION ALL
             SELECT message_id, content, received_at as timestamp, 'received' as type, message_type
             FROM `{self.dataset_id}.{self.settings.bigquery_table_received}`
