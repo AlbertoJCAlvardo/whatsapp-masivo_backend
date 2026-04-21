@@ -110,6 +110,39 @@ class WhatsAppService:
             response.raise_for_status()
             return response.json()["id"]
 
+    async def upload_resumable_media(self, file_content: bytes, mime_type: str, file_size: int, filename: str) -> str:
+        """Sube un archivo usando la Resumable Upload API para obtener un 'handle'."""
+        if not self.settings.whatsapp_app_id:
+            raise ValueError("WHATSAPP_APP_ID no está configurado en las variables de entorno.")
+
+        # Paso 1: Crear sesión de carga
+        session_url = f"https://graph.facebook.com/v19.0/{self.settings.whatsapp_app_id}/uploads"
+        params = {
+            "file_length": str(file_size),
+            "file_type": mime_type,
+            "access_token": self.settings.whatsapp_access_token
+        }
+        
+        async with httpx.AsyncClient() as client:
+            session_resp = await client.post(session_url, params=params, timeout=30.0)
+            session_resp.raise_for_status()
+            session_id = session_resp.json()["id"]
+
+            # Paso 2: Subir data
+            upload_url = f"https://graph.facebook.com/v19.0/{session_id}"
+            headers = {
+                "Authorization": f"OAuth {self.settings.whatsapp_access_token}",
+                "file_offset": "0"
+            }
+            upload_resp = await client.post(
+                upload_url,
+                headers=headers,
+                content=file_content,
+                timeout=60.0
+            )
+            upload_resp.raise_for_status()
+            return upload_resp.json()["h"]
+
     async def send_message(self, request: SendMessageRequest) -> SendMessageResponse:
         """Envia un mensaje a traves de la API de WhatsApp."""
         if request.message_type.value == "template":
@@ -222,7 +255,7 @@ class WhatsAppService:
                     logger.error(f"Meta Error Response: {e.response.text}")
                 return {"status": "ERROR", "detail": str(e)}
 
-    async def create_template(self, name: str, text: str, category: str = "MARKETING", language: str = "es", header_type: str = None, waba_id: str = None) -> dict:
+    async def create_template(self, name: str, text: str, category: str = "MARKETING", language: str = "es", header_type: str = None, header_text: str = None, header_handle: str = None, footer_text: str = None, waba_id: str = None) -> dict:
         """Registra una nueva plantilla en la cuenta de WhatsApp Business."""
         target_waba = waba_id or self.settings.whatsapp_business_account_id
         if not target_waba:
@@ -237,10 +270,28 @@ class WhatsAppService:
             }
         ]
         
-        if header_type and header_type.upper() in ["IMAGE", "VIDEO", "DOCUMENT"]:
-            components.insert(0, {
-                "type": "HEADER",
-                "format": header_type.upper()
+        if header_type:
+            if header_type.upper() == "TEXT" and header_text:
+                components.insert(0, {
+                    "type": "HEADER",
+                    "format": "TEXT",
+                    "text": header_text
+                })
+            elif header_type.upper() in ["IMAGE", "VIDEO", "DOCUMENT"]:
+                header_comp = {
+                    "type": "HEADER",
+                    "format": header_type.upper()
+                }
+                if header_handle:
+                    header_comp["example"] = {
+                        "header_handle": [header_handle]
+                    }
+                components.insert(0, header_comp)
+                
+        if footer_text:
+            components.append({
+                "type": "FOOTER",
+                "text": footer_text
             })
             
         payload = {

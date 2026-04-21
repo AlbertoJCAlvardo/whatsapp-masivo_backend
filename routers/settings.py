@@ -54,3 +54,22 @@ async def upload_media(
         return {"id": media_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/media/upload-resumable")
+async def upload_resumable_media_endpoint(
+    file: UploadFile = File(...)
+):
+    """Sube un archivo multimedia a Meta vía Resumable Upload API para obtener un 'handle' exigido en la creación de templates."""
+    try:
+        content = await file.read()
+        file_size = len(content)
+        whatsapp_service = get_whatsapp_service()
+        handle = await whatsapp_service.upload_resumable_media(
+            content,
+            file.content_type,
+            file_size,
+            file.filename
+        )
+        return {"handle": handle}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

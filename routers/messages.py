@@ -20,6 +20,9 @@ class TemplateCreate(BaseModel):
     category: str = "MARKETING"
     language: str = "es"
     header_type: Optional[str] = None
+    header_text: Optional[str] = None
+    header_handle: Optional[str] = None
+    footer_text: Optional[str] = None
     waba_id: Optional[str] = None
 
 
@@ -63,6 +66,9 @@ async def create_template(request: TemplateCreate):
             category=request.category,
             language=request.language,
             header_type=request.header_type,
+            header_text=request.header_text,
+            header_handle=request.header_handle,
+            footer_text=request.footer_text,
             waba_id=request.waba_id
         )
         return result

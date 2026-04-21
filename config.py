@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     whatsapp_phone_number_id: str
     whatsapp_access_token: str
     whatsapp_verify_token: str
+    whatsapp_app_id: str | None = None
     whatsapp_business_account_id: str | None = None
     gcp_project_id: str
     bigquery_dataset: str = "whatsapp_messages"
