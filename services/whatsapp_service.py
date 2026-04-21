@@ -263,12 +263,18 @@ class WhatsAppService:
             
         url = f"{self.settings.whatsapp_api_url}/{target_waba}/message_templates"
         
-        components = [
-            {
-                "type": "BODY",
-                "text": text
+        import re
+        body_vars = re.findall(r'\{\{\d+\}\}', text)
+        body_component = {
+            "type": "BODY",
+            "text": text
+        }
+        if body_vars:
+            body_component["example"] = {
+                "body_text": [["Variable"] * len(body_vars)]
             }
-        ]
+            
+        components = [body_component]
         
         if header_type:
             if header_type.upper() == "TEXT" and header_text:
