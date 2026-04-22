@@ -197,30 +197,55 @@ class BigQueryService:
             logger.error(f"Error actualizando estado en BigQuery para {message_id}: {str(e)}")
 
     def get_contacts(self) -> list[dict]:
-        """Obtiene una lista de numeros de telefono (contactos) y sus de conteo de no leídos."""
+        """Obtiene una lista de numeros de telefono (contactos), preview del ultimo mensaje y conteo de no leídos."""
         query = f"""
-            SELECT phone, SUM(unread) as unread_count
-            FROM (
-                SELECT from_number as phone, IF(is_read = FALSE, 1, 0) as unread FROM `{self.dataset_id}.{self.settings.bigquery_table_received}`
+            WITH all_messages AS (
+                SELECT 
+                    from_number as phone, 
+                    content,
+                    received_at as timestamp,
+                    IF(is_read = FALSE, 1, 0) as unread
+                FROM `{self.dataset_id}.{self.settings.bigquery_table_received}`
+                
                 UNION ALL
-                SELECT to_number as phone, 0 as unread FROM `{self.dataset_id}.{self.settings.bigquery_table_sent}`
+                
+                SELECT 
+                    to_number as phone, 
+                    content,
+                    sent_at as timestamp,
+                    0 as unread
+                FROM `{self.dataset_id}.{self.settings.bigquery_table_sent}`
+            ),
+            ranked_messages AS (
+                SELECT 
+                    phone,
+                    content as last_message,
+                    timestamp as last_timestamp,
+                    unread,
+                    ROW_NUMBER() OVER(PARTITION BY RIGHT(phone, 10) ORDER BY timestamp DESC) as rn
+                FROM all_messages
+                WHERE phone IS NOT NULL AND LENGTH(phone) >= 10
             )
-            WHERE phone IS NOT NULL AND LENGTH(phone) >= 10
-            GROUP BY RIGHT(phone, 10), phone
-            ORDER BY MAX(phone) DESC
+            SELECT 
+                MAX(phone) as phone,
+                MAX(CASE WHEN rn = 1 THEN last_message END) as last_message,
+                MAX(CASE WHEN rn = 1 THEN last_timestamp END) as last_timestamp,
+                SUM(unread) as unread_count
+            FROM ranked_messages
+            GROUP BY RIGHT(phone, 10)
+            ORDER BY last_timestamp DESC
         """
         query_job = self.client.query(query)
         results = query_job.result()
-        # Group by RIGHT(phone, 10) can cause multiple phones if someone has 521 and 52
-        # So we group by actual phone as well to map them uniquely
-        contacts = {}
-        for row in results:
-            short = row.phone[-10:] if len(row.phone) >= 10 else row.phone
-            if short not in contacts:
-                contacts[short] = {"phone": row.phone, "unread_count": row.unread_count}
-            else:
-                contacts[short]["unread_count"] += row.unread_count
-        return list(contacts.values())
+        return [
+            {
+                "phone": row.phone, 
+                "unread_count": row.unread_count,
+                "last_message": row.last_message,
+                "last_timestamp": row.last_timestamp.isoformat() if row.last_timestamp else None
+            } 
+            for row in results
+        ]
 
     def get_chat_history(self, phone_number: str) -> list[dict]:
         """Obtiene el historial de chat (enviados y recibidos) para un numero."""
