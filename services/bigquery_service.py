@@ -280,7 +280,7 @@ class BigQueryService:
             UPDATE `{table_id}`
             SET is_read = TRUE
             WHERE RIGHT(from_number, 10) = RIGHT(@phone_number, 10)
-            AND is_read = FALSE OR is_read IS NULL
+            AND (is_read = FALSE OR is_read IS NULL)
         """
         job_config = bigquery.QueryJobConfig(
             query_parameters=[
