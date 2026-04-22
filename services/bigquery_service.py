@@ -53,6 +53,18 @@ class BigQueryService:
         self._create_table_if_not_exists(self.settings.bigquery_table_sent, sent_schema)
         self._create_table_if_not_exists(self.settings.bigquery_table_received, received_schema)
 
+        # Migración: Verificar si la columna is_read existe
+        received_table_id = f"{self.dataset_id}.{self.settings.bigquery_table_received}"
+        try:
+            table = self.client.get_table(received_table_id)
+            if not any(f.name == "is_read" for f in table.schema):
+                new_schema = table.schema[:]
+                new_schema.append(bigquery.SchemaField("is_read", "BOOLEAN", mode="NULLABLE"))
+                table.schema = new_schema
+                self.client.update_table(table, ["schema"])
+        except Exception as e:
+            logger.error(f"Error checking/updating received_messages schema: {e}")
+
         phone_numbers_schema = [
             bigquery.SchemaField("alias", "STRING", mode="REQUIRED"),
             bigquery.SchemaField("phone_number_id", "STRING", mode="REQUIRED"),
@@ -146,6 +158,7 @@ class BigQueryService:
                 "media_id": record.media_id,
                 "received_at": record.received_at.isoformat(),
                 "raw_payload": record.raw_payload,
+                "is_read": False,
             }
         ]
         errors = self.client.insert_rows_json(table_id, rows_to_insert)
@@ -183,35 +196,46 @@ class BigQueryService:
         except Exception as e:
             logger.error(f"Error actualizando estado en BigQuery para {message_id}: {str(e)}")
 
-    def get_contacts(self) -> list[str]:
-        """Obtiene una lista de numeros de telefono (contactos) con los que ha habido interaccion."""
+    def get_contacts(self) -> list[dict]:
+        """Obtiene una lista de numeros de telefono (contactos) y sus de conteo de no leídos."""
         query = f"""
-            SELECT MAX(phone) as phone
+            SELECT phone, SUM(unread) as unread_count
             FROM (
-                SELECT from_number as phone FROM `{self.dataset_id}.{self.settings.bigquery_table_received}`
-                UNION DISTINCT
-                SELECT to_number as phone FROM `{self.dataset_id}.{self.settings.bigquery_table_sent}`
+                SELECT from_number as phone, IF(is_read = FALSE, 1, 0) as unread FROM `{self.dataset_id}.{self.settings.bigquery_table_received}`
+                UNION ALL
+                SELECT to_number as phone, 0 as unread FROM `{self.dataset_id}.{self.settings.bigquery_table_sent}`
             )
             WHERE phone IS NOT NULL AND LENGTH(phone) >= 10
-            GROUP BY RIGHT(phone, 10)
-            ORDER BY phone
+            GROUP BY RIGHT(phone, 10), phone
+            ORDER BY MAX(phone) DESC
         """
         query_job = self.client.query(query)
         results = query_job.result()
-        return [row.phone for row in results]
+        # Group by RIGHT(phone, 10) can cause multiple phones if someone has 521 and 52
+        # So we group by actual phone as well to map them uniquely
+        contacts = {}
+        for row in results:
+            short = row.phone[-10:] if len(row.phone) >= 10 else row.phone
+            if short not in contacts:
+                contacts[short] = {"phone": row.phone, "unread_count": row.unread_count}
+            else:
+                contacts[short]["unread_count"] += row.unread_count
+        return list(contacts.values())
 
     def get_chat_history(self, phone_number: str) -> list[dict]:
         """Obtiene el historial de chat (enviados y recibidos) para un numero."""
         query = f"""
-            SELECT message_id, content, sent_at as timestamp, 'sent' as type, message_type
-            FROM `{self.dataset_id}.{self.settings.bigquery_table_sent}`
-            WHERE RIGHT(to_number, 10) = RIGHT(@phone_number, 10)
-            AND status != 'failed'
-            UNION ALL
-            SELECT message_id, content, received_at as timestamp, 'received' as type, message_type
-            FROM `{self.dataset_id}.{self.settings.bigquery_table_received}`
-            WHERE RIGHT(from_number, 10) = RIGHT(@phone_number, 10)
-            ORDER BY timestamp ASC
+            SELECT * FROM (
+                SELECT message_id, content, sent_at as timestamp, 'sent' as type, message_type, NULL as media_id
+                FROM `{self.dataset_id}.{self.settings.bigquery_table_sent}`
+                WHERE RIGHT(to_number, 10) = RIGHT(@phone_number, 10)
+                AND status != 'failed'
+                UNION ALL
+                SELECT message_id, content, received_at as timestamp, 'received' as type, message_type, media_id
+                FROM `{self.dataset_id}.{self.settings.bigquery_table_received}`
+                WHERE RIGHT(from_number, 10) = RIGHT(@phone_number, 10)
+            )
+            ORDER BY timestamp DESC
             LIMIT 100
         """
         job_config = bigquery.QueryJobConfig(
@@ -221,7 +245,28 @@ class BigQueryService:
         )
         query_job = self.client.query(query, job_config=job_config)
         results = query_job.result()
-        return [dict(row) for row in results]
+        messages = [dict(row) for row in results]
+        return list(reversed(messages))
+
+    def mark_chat_read(self, phone_number: str) -> None:
+        """Marca todos los mensajes recibidos de un numero como leídos."""
+        table_id = f"{self.dataset_id}.{self.settings.bigquery_table_received}"
+        query = f"""
+            UPDATE `{table_id}`
+            SET is_read = TRUE
+            WHERE RIGHT(from_number, 10) = RIGHT(@phone_number, 10)
+            AND is_read = FALSE OR is_read IS NULL
+        """
+        job_config = bigquery.QueryJobConfig(
+            query_parameters=[
+                bigquery.ScalarQueryParameter("phone_number", "STRING", phone_number)
+            ]
+        )
+        try:
+            query_job = self.client.query(query, job_config=job_config)
+            query_job.result()
+        except Exception as e:
+            logger.error(f"Error marking chat {phone_number} as read: {e}")
 
     def get_campaign_stats(self) -> list[dict]:
         """Obtiene estadisticas de campañas recientes (agrupadas por hora)."""

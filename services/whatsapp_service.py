@@ -143,6 +143,31 @@ class WhatsAppService:
             upload_resp.raise_for_status()
             return upload_resp.json()["h"]
 
+    async def download_media(self, media_id: str) -> tuple[bytes, str]:
+        """Descarga el contenido binario de un archivo multimedia desde Meta."""
+        url_metadata = f"https://graph.facebook.com/v19.0/{media_id}"
+        async with httpx.AsyncClient() as client:
+            meta_resp = await client.get(
+                url_metadata,
+                headers={"Authorization": self.headers["Authorization"]},
+                timeout=10.0
+            )
+            meta_resp.raise_for_status()
+            data = meta_resp.json()
+            download_url = data.get("url")
+            mime_type = data.get("mime_type")
+
+            if not download_url:
+                raise Exception(f"No se pudo obtener URL de descarga para el media: {media_id}")
+
+            binary_resp = await client.get(
+                download_url,
+                headers={"Authorization": self.headers["Authorization"]},
+                timeout=60.0
+            )
+            binary_resp.raise_for_status()
+            return binary_resp.content, mime_type
+
     async def send_message(self, request: SendMessageRequest) -> SendMessageResponse:
         """Envia un mensaje a traves de la API de WhatsApp."""
         if request.message_type.value == "template":
