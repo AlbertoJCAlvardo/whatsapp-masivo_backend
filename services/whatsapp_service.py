@@ -216,6 +216,7 @@ class WhatsAppService:
         content = self._extract_content(request)
         record = SentMessageRecord(
             message_id=message_id,
+            from_number=request.from_phone_number_id or self.default_phone_number_id,
             to_number=request.to,
             message_type=request.message_type.value,
             content=content,

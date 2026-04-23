@@ -83,7 +83,7 @@ async def receive_webhook(request: Request) -> dict:
         bigquery_service = get_bigquery_service()
 
         for message in messages:
-            record = _parse_message(message, raw_payload)
+            record = _parse_message(message, value, raw_payload)
             if record:
                 bigquery_service.insert_received_message(record)
 
@@ -96,12 +96,15 @@ async def receive_webhook(request: Request) -> dict:
     return {"status": "ok"}
 
 
-def _parse_message(message: dict, raw_payload: str) -> ReceivedMessageRecord | None:
+def _parse_message(message: dict, value: dict, raw_payload: str) -> ReceivedMessageRecord | None:
     """Parsea un mensaje del webhook y lo convierte en un registro."""
     message_id = message.get("id")
     from_number = message.get("from")
     timestamp_str = message.get("timestamp")
     message_type = message.get("type", "text")
+    
+    metadata = value.get("metadata", {})
+    to_number = metadata.get("phone_number_id", get_settings().whatsapp_phone_number_id)
 
     if not all([message_id, from_number, timestamp_str]):
         logger.warning(f"Mensaje omitido por falta de datos requeridos: id={message_id}, from={from_number}, timestamp={timestamp_str}")
@@ -123,6 +126,7 @@ def _parse_message(message: dict, raw_payload: str) -> ReceivedMessageRecord | N
     return ReceivedMessageRecord(
         message_id=message_id,
         from_number=from_number,
+        to_number=to_number,
         message_type=msg_type.value,
         content=content,
         media_id=media_id,

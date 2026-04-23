@@ -53,13 +53,31 @@ class BigQueryService:
         self._create_table_if_not_exists(self.settings.bigquery_table_sent, sent_schema)
         self._create_table_if_not_exists(self.settings.bigquery_table_received, received_schema)
 
-        # Migración: Verificar si la columna is_read existe
+        # Migración: Verificar si la columna from_number existe
+        sent_table_id = f"{self.dataset_id}.{self.settings.bigquery_table_sent}"
+        try:
+            table = self.client.get_table(sent_table_id)
+            if not any(f.name == "from_number" for f in table.schema):
+                new_schema = table.schema[:]
+                new_schema.append(bigquery.SchemaField("from_number", "STRING", mode="NULLABLE"))
+                table.schema = new_schema
+                self.client.update_table(table, ["schema"])
+        except Exception as e:
+            logger.error(f"Error checking/updating sent_messages schema: {e}")
+
+        # Migración: Verificar received_messages (is_read y to_number)
         received_table_id = f"{self.dataset_id}.{self.settings.bigquery_table_received}"
         try:
             table = self.client.get_table(received_table_id)
+            new_schema = table.schema[:]
+            updated = False
             if not any(f.name == "is_read" for f in table.schema):
-                new_schema = table.schema[:]
                 new_schema.append(bigquery.SchemaField("is_read", "BOOLEAN", mode="NULLABLE"))
+                updated = True
+            if not any(f.name == "to_number" for f in table.schema):
+                new_schema.append(bigquery.SchemaField("to_number", "STRING", mode="NULLABLE"))
+                updated = True
+            if updated:
                 table.schema = new_schema
                 self.client.update_table(table, ["schema"])
         except Exception as e:
@@ -145,6 +163,7 @@ class BigQueryService:
         rows_to_insert = [
             {
                 "message_id": record.message_id,
+                "from_number": record.from_number,
                 "to_number": record.to_number,
                 "message_type": record.message_type,
                 "content": record.content,
@@ -166,6 +185,7 @@ class BigQueryService:
             {
                 "message_id": record.message_id,
                 "from_number": record.from_number,
+                "to_number": record.to_number,
                 "message_type": record.message_type,
                 "content": record.content,
                 "media_id": record.media_id,
@@ -209,12 +229,13 @@ class BigQueryService:
         except Exception as e:
             logger.error(f"Error actualizando estado en BigQuery para {message_id}: {str(e)}")
 
-    def get_contacts(self) -> list[dict]:
-        """Obtiene una lista de numeros de telefono (contactos), preview del ultimo mensaje y conteo de no leídos."""
+    def get_contacts(self, sender_id: str) -> list[dict]:
+        """Obtiene una lista de numeros de telefono (contactos), preview del ultimo mensaje y conteo de no leídos filtrado por sender_id."""
         query = f"""
             WITH all_messages AS (
                 SELECT 
                     from_number as phone, 
+                    COALESCE(to_number, '{self.settings.whatsapp_phone_number_id}') as sender_id,
                     content,
                     received_at as timestamp,
                     IF(is_read = FALSE, 1, 0) as unread,
@@ -225,6 +246,7 @@ class BigQueryService:
                 
                 SELECT 
                     to_number as phone, 
+                    COALESCE(from_number, '{self.settings.whatsapp_phone_number_id}') as sender_id,
                     content,
                     sent_at as timestamp,
                     0 as unread,
@@ -241,6 +263,7 @@ class BigQueryService:
                     ROW_NUMBER() OVER(PARTITION BY RIGHT(phone, 10) ORDER BY timestamp DESC) as rn
                 FROM all_messages
                 WHERE phone IS NOT NULL AND LENGTH(phone) >= 10
+                AND sender_id = @sender_id
             )
             SELECT 
                 MAX(phone) as phone,
@@ -252,7 +275,12 @@ class BigQueryService:
             GROUP BY RIGHT(phone, 10)
             ORDER BY last_timestamp DESC
         """
-        query_job = self.client.query(query)
+        job_config = bigquery.QueryJobConfig(
+            query_parameters=[
+                bigquery.ScalarQueryParameter("sender_id", "STRING", sender_id)
+            ]
+        )
+        query_job = self.client.query(query, job_config=job_config)
         results = query_job.result()
         
         contacts = []
@@ -277,25 +305,28 @@ class BigQueryService:
             })
         return contacts
 
-    def get_chat_history(self, phone_number: str) -> list[dict]:
-        """Obtiene el historial de chat (enviados y recibidos) para un numero."""
+    def get_chat_history(self, phone_number: str, sender_id: str) -> list[dict]:
+        """Obtiene el historial de chat (enviados y recibidos) para un numero y un sender especifico."""
         query = f"""
             SELECT * FROM (
                 SELECT message_id, content, sent_at as timestamp, 'sent' as type, message_type, NULL as media_id, status
                 FROM `{self.dataset_id}.{self.settings.bigquery_table_sent}`
                 WHERE RIGHT(to_number, 10) = RIGHT(@phone_number, 10)
+                AND COALESCE(from_number, '{self.settings.whatsapp_phone_number_id}') = @sender_id
                 AND status != 'failed'
                 UNION ALL
                 SELECT message_id, content, received_at as timestamp, 'received' as type, message_type, media_id, NULL as status
                 FROM `{self.dataset_id}.{self.settings.bigquery_table_received}`
                 WHERE RIGHT(from_number, 10) = RIGHT(@phone_number, 10)
+                AND COALESCE(to_number, '{self.settings.whatsapp_phone_number_id}') = @sender_id
             )
             ORDER BY timestamp DESC
             LIMIT 100
         """
         job_config = bigquery.QueryJobConfig(
             query_parameters=[
-                bigquery.ScalarQueryParameter("phone_number", "STRING", phone_number)
+                bigquery.ScalarQueryParameter("phone_number", "STRING", phone_number),
+                bigquery.ScalarQueryParameter("sender_id", "STRING", sender_id)
             ]
         )
         query_job = self.client.query(query, job_config=job_config)
@@ -303,18 +334,20 @@ class BigQueryService:
         messages = [dict(row) for row in results]
         return list(reversed(messages))
 
-    def mark_chat_read(self, phone_number: str) -> None:
-        """Marca todos los mensajes recibidos de un numero como leídos."""
+    def mark_chat_read(self, phone_number: str, sender_id: str) -> None:
+        """Marca todos los mensajes recibidos de un numero (hacia un sender) como leídos."""
         table_id = f"{self.dataset_id}.{self.settings.bigquery_table_received}"
         query = f"""
             UPDATE `{table_id}`
             SET is_read = TRUE
             WHERE RIGHT(from_number, 10) = RIGHT(@phone_number, 10)
+            AND COALESCE(to_number, '{self.settings.whatsapp_phone_number_id}') = @sender_id
             AND (is_read = FALSE OR is_read IS NULL)
         """
         job_config = bigquery.QueryJobConfig(
             query_parameters=[
-                bigquery.ScalarQueryParameter("phone_number", "STRING", phone_number)
+                bigquery.ScalarQueryParameter("phone_number", "STRING", phone_number),
+                bigquery.ScalarQueryParameter("sender_id", "STRING", sender_id)
             ]
         )
         try:

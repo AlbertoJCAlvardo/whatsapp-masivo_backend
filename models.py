@@ -147,6 +147,7 @@ class SentMessageRecord(BaseModel):
     """Registro de mensaje enviado para BigQuery."""
 
     message_id: str
+    from_number: str
     to_number: str
     message_type: str
     content: str
@@ -160,6 +161,7 @@ class ReceivedMessageRecord(BaseModel):
 
     message_id: str
     from_number: str
+    to_number: str
     message_type: str
     content: str
     media_id: Optional[str] = None

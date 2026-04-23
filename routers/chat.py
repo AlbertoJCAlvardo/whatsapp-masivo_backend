@@ -8,30 +8,30 @@ from routers.messages import verify_token
 router = APIRouter(prefix="/chat", tags=["chat"], dependencies=[Depends(verify_token)])
 
 @router.get("/contacts")
-async def get_contacts():
+async def get_contacts(sender_id: str):
     """Obtiene la lista de contactos que han interactuado."""
     try:
         bq_service = get_bigquery_service()
-        contacts = bq_service.get_contacts()
+        contacts = bq_service.get_contacts(sender_id)
         return contacts
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/messages/{phone_number}")
-async def get_chat_history(phone_number: str):
+async def get_chat_history(phone_number: str, sender_id: str):
     """Obtiene el historial de mensajes con un numero especifico."""
     try:
         bq_service = get_bigquery_service()
-        history = bq_service.get_chat_history(phone_number)
+        history = bq_service.get_chat_history(phone_number, sender_id)
         return history
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/read/{phone_number}")
-async def mark_chat_read(phone_number: str):
+async def mark_chat_read(phone_number: str, sender_id: str):
     try:
         bq_service = get_bigquery_service()
-        bq_service.mark_chat_read(phone_number)
+        bq_service.mark_chat_read(phone_number, sender_id)
         return {"status": "ok"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
