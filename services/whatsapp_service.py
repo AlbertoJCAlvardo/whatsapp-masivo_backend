@@ -213,6 +213,20 @@ class WhatsAppService:
         message_id = data["messages"][0]["id"]
         timestamp = datetime.utcnow()
 
+        media_id_extracted = None
+        if request.message_type.value == "template" and request.template_components:
+            for comp in request.template_components:
+                if comp.get("type") == "header":
+                    for param in comp.get("parameters", []):
+                        if param.get("type") in ["image", "video", "document"]:
+                            media_info = param.get(param["type"])
+                            if media_info:
+                                media_id_extracted = media_info.get("id") or media_info.get("link")
+        elif request.message_type.value in ["image", "video", "document", "audio"]:
+            media = getattr(request, request.message_type.value)
+            if media:
+                media_id_extracted = media.id or media.link
+
         content = self._extract_content(request)
         record = SentMessageRecord(
             message_id=message_id,
@@ -222,6 +236,7 @@ class WhatsAppService:
             content=content,
             status="sent",
             sent_at=timestamp,
+            media_id=media_id_extracted,
             whatsapp_response=json.dumps(data),
         )
 

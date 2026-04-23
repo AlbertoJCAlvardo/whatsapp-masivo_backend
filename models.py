@@ -153,6 +153,7 @@ class SentMessageRecord(BaseModel):
     content: str
     status: str
     sent_at: datetime
+    media_id: Optional[str] = None
     whatsapp_response: Optional[str] = None
 
 

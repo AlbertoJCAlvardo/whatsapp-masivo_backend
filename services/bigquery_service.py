@@ -57,9 +57,15 @@ class BigQueryService:
         sent_table_id = f"{self.dataset_id}.{self.settings.bigquery_table_sent}"
         try:
             table = self.client.get_table(sent_table_id)
+            new_schema = table.schema[:]
+            updated = False
             if not any(f.name == "from_number" for f in table.schema):
-                new_schema = table.schema[:]
                 new_schema.append(bigquery.SchemaField("from_number", "STRING", mode="NULLABLE"))
+                updated = True
+            if not any(f.name == "media_id" for f in table.schema):
+                new_schema.append(bigquery.SchemaField("media_id", "STRING", mode="NULLABLE"))
+                updated = True
+            if updated:
                 table.schema = new_schema
                 self.client.update_table(table, ["schema"])
         except Exception as e:
@@ -169,6 +175,7 @@ class BigQueryService:
                 "content": record.content,
                 "status": record.status,
                 "sent_at": record.sent_at.isoformat(),
+                "media_id": record.media_id,
                 "whatsapp_response": record.whatsapp_response,
             }
         ]
@@ -309,7 +316,7 @@ class BigQueryService:
         """Obtiene el historial de chat (enviados y recibidos) para un numero y un sender especifico."""
         query = f"""
             SELECT * FROM (
-                SELECT message_id, content, sent_at as timestamp, 'sent' as type, message_type, NULL as media_id, status
+                SELECT message_id, content, sent_at as timestamp, 'sent' as type, message_type, media_id, status
                 FROM `{self.dataset_id}.{self.settings.bigquery_table_sent}`
                 WHERE RIGHT(to_number, 10) = RIGHT(@phone_number, 10)
                 AND COALESCE(from_number, '{self.settings.whatsapp_phone_number_id}') = @sender_id
