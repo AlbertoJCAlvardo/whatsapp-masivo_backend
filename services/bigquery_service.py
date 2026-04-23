@@ -89,8 +89,21 @@ class BigQueryService:
             bigquery.SchemaField("user_id", "STRING", mode="REQUIRED"),
             bigquery.SchemaField("username", "STRING", mode="REQUIRED"),
             bigquery.SchemaField("password_hash", "STRING", mode="REQUIRED"),
+            bigquery.SchemaField("role", "STRING", mode="NULLABLE"),
         ]
         self._create_table_if_not_exists("users", users_schema)
+
+        # Migración: Verificar si la columna role existe
+        users_table_id = f"{self.dataset_id}.users"
+        try:
+            table = self.client.get_table(users_table_id)
+            if not any(f.name == "role" for f in table.schema):
+                new_schema = table.schema[:]
+                new_schema.append(bigquery.SchemaField("role", "STRING", mode="NULLABLE"))
+                table.schema = new_schema
+                self.client.update_table(table, ["schema"])
+        except Exception as e:
+            logger.error(f"Error checking/updating users schema: {e}")
 
     def _create_table_if_not_exists(self, table_name: str, schema: list) -> None:
         """Crea una tabla con el esquema especificado si no existe."""
@@ -204,7 +217,8 @@ class BigQueryService:
                     from_number as phone, 
                     content,
                     received_at as timestamp,
-                    IF(is_read = FALSE, 1, 0) as unread
+                    IF(is_read = FALSE, 1, 0) as unread,
+                    received_at as latest_received
                 FROM `{self.dataset_id}.{self.settings.bigquery_table_received}`
                 
                 UNION ALL
@@ -213,7 +227,8 @@ class BigQueryService:
                     to_number as phone, 
                     content,
                     sent_at as timestamp,
-                    0 as unread
+                    0 as unread,
+                    NULL as latest_received
                 FROM `{self.dataset_id}.{self.settings.bigquery_table_sent}`
             ),
             ranked_messages AS (
@@ -222,6 +237,7 @@ class BigQueryService:
                     content as last_message,
                     timestamp as last_timestamp,
                     unread,
+                    latest_received,
                     ROW_NUMBER() OVER(PARTITION BY RIGHT(phone, 10) ORDER BY timestamp DESC) as rn
                 FROM all_messages
                 WHERE phone IS NOT NULL AND LENGTH(phone) >= 10
@@ -230,33 +246,47 @@ class BigQueryService:
                 MAX(phone) as phone,
                 MAX(CASE WHEN rn = 1 THEN last_message END) as last_message,
                 MAX(CASE WHEN rn = 1 THEN last_timestamp END) as last_timestamp,
-                SUM(unread) as unread_count
+                SUM(unread) as unread_count,
+                MAX(latest_received) as last_received_time
             FROM ranked_messages
             GROUP BY RIGHT(phone, 10)
             ORDER BY last_timestamp DESC
         """
         query_job = self.client.query(query)
         results = query_job.result()
-        return [
-            {
+        
+        contacts = []
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        for row in results:
+            window_open = False
+            remaining_hours = 0
+            if row.last_received_time:
+                diff_seconds = (now - row.last_received_time).total_seconds()
+                if diff_seconds < 24 * 3600:
+                    window_open = True
+                    remaining_hours = max(0, 24 - (diff_seconds / 3600))
+            
+            contacts.append({
                 "phone": row.phone, 
                 "unread_count": row.unread_count,
                 "last_message": row.last_message,
-                "last_timestamp": row.last_timestamp.isoformat() if row.last_timestamp else None
-            } 
-            for row in results
-        ]
+                "last_timestamp": row.last_timestamp.isoformat() if row.last_timestamp else None,
+                "window_open": window_open,
+                "remaining_hours": round(remaining_hours, 2)
+            })
+        return contacts
 
     def get_chat_history(self, phone_number: str) -> list[dict]:
         """Obtiene el historial de chat (enviados y recibidos) para un numero."""
         query = f"""
             SELECT * FROM (
-                SELECT message_id, content, sent_at as timestamp, 'sent' as type, message_type, NULL as media_id
+                SELECT message_id, content, sent_at as timestamp, 'sent' as type, message_type, NULL as media_id, status
                 FROM `{self.dataset_id}.{self.settings.bigquery_table_sent}`
                 WHERE RIGHT(to_number, 10) = RIGHT(@phone_number, 10)
                 AND status != 'failed'
                 UNION ALL
-                SELECT message_id, content, received_at as timestamp, 'received' as type, message_type, media_id
+                SELECT message_id, content, received_at as timestamp, 'received' as type, message_type, media_id, NULL as status
                 FROM `{self.dataset_id}.{self.settings.bigquery_table_received}`
                 WHERE RIGHT(from_number, 10) = RIGHT(@phone_number, 10)
             )
@@ -310,7 +340,7 @@ class BigQueryService:
         results = query_job.result()
         return [dict(row) for row in results]
 
-    def add_user(self, user_id: str, username: str, password_hash: str) -> None:
+    def add_user(self, user_id: str, username: str, password_hash: str, role: str = "agent") -> None:
         """Agrega un nuevo usuario a BigQuery."""
         table_id = f"{self.dataset_id}.users"
         rows_to_insert = [
@@ -318,6 +348,7 @@ class BigQueryService:
                 "user_id": user_id,
                 "username": username,
                 "password_hash": password_hash,
+                "role": role,
             }
         ]
         errors = self.client.insert_rows_json(table_id, rows_to_insert)

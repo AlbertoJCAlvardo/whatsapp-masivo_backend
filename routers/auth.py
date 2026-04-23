@@ -20,6 +20,7 @@ class LoginRequest(BaseModel):
 class UserCreate(BaseModel):
     username: str
     password: str
+    role: str = "agent"
 
 @router.post("/register")
 async def register(request: UserCreate):
@@ -31,7 +32,7 @@ async def register(request: UserCreate):
     user_id = str(uuid.uuid4())
     
     try:
-        bq.add_user(user_id, request.username, hashed_pwd)
+        bq.add_user(user_id, request.username, hashed_pwd, role=request.role)
         return {"message": "Usuario registrado exitosamente", "username": request.username}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -57,7 +58,7 @@ async def login(request: LoginRequest):
     bq = get_bigquery_service()
     
     query = f"""
-        SELECT user_id, username, password_hash
+        SELECT user_id, username, password_hash, role
         FROM `{bq.dataset_id}.users`
         WHERE username = @username
         LIMIT 1
@@ -82,5 +83,7 @@ async def login(request: LoginRequest):
     if not verify_password(request.password, user_row.password_hash):
         raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos")
 
-    access_token = create_access_token(data={"sub": user_row.username, "user_id": user_row.user_id})
+    # Si el usuario es legacy y no tiene role, asumimos admin, de lo contrario usamos su role
+    user_role = getattr(user_row, 'role', None) or "admin"
+    access_token = create_access_token(data={"sub": user_row.username, "user_id": user_row.user_id, "role": user_role})
     return {"access_token": access_token, "token_type": "bearer"}
